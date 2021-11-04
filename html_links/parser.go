@@ -1,8 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"strings"
+	"os"
 
 	"golang.org/x/net/html"
 )
@@ -32,11 +33,12 @@ func checkErr(err error) {
 }
 
 func main() {
-	//resp, err := http.Get("http://www.google.com")
-	//checkErr(err)
+	fileFlag := flag.String("f", "ex2.html", ".html file to parse")
+	flag.Parse()
 
-	//doc, err := html.Parse(ioutil.ReadAll(resp.Body))
-	r := strings.NewReader(exmplHtml)
+	r, err := os.Open(*fileFlag)
+	checkErr(err)
+
 	doc, err := html.Parse(r)
 	checkErr(err)
 
