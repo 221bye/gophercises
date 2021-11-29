@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"qhnews/hn"
+	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -52,18 +53,40 @@ func getTopStories(numStories int) ([]item, error) {
 	if err != nil {
 		return nil, errors.New("failed to load top stories")
 	}
+
+	type result struct {
+		idx  int
+		item item
+		err  error
+	}
+	resultCh := make(chan result)
+	for i := 0; i < numStories; i++ {
+
+		go func(idx, id int) {
+			hnItem, err := client.GetItem(id)
+			if err != nil {
+				resultCh <- result{idx: idx, err: err}
+			}
+			resultCh <- result{idx: idx, item: parseHNItem(hnItem)}
+		}(i, ids[i])
+
+	}
+
+	var results []result
+	for i := 0; i < numStories; i++ {
+		results = append(results, <-resultCh)
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].idx < results[j].idx
+	})
+
 	var stories []item
-	for _, id := range ids {
-		hnItem, err := client.GetItem(id)
-		if err != nil {
+	for _, res := range results {
+		if res.err != nil {
 			continue
 		}
-		item := parseHNItem(hnItem)
-		if isStoryLink(item) {
-			stories = append(stories, item)
-			if len(stories) >= numStories {
-				break
-			}
+		if isStoryLink(res.item) {
+			stories = append(stories, res.item)
 		}
 	}
 	return stories, nil
