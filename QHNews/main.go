@@ -31,7 +31,7 @@ func main() {
 func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		stories, err := getTopStories(numStories)
+		stories, err := getCachedStories(numStories)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -47,6 +47,24 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	})
 }
 
+var (
+	cache           []item
+	cacheExpiration time.Time
+)
+
+func getCachedStories(numStories int) ([]item, error) {
+	if time.Since(cacheExpiration) < 0 {
+		return cache, nil
+	}
+	stories, err := getTopStories(numStories)
+	if err != nil {
+		return nil, err
+	}
+	cache = stories
+	cacheExpiration = time.Now().Add(15 * time.Second)
+	return stories, nil
+}
+
 func getTopStories(numStories int) ([]item, error) {
 	var client hn.Client
 	ids, err := client.TopItems()
@@ -60,7 +78,8 @@ func getTopStories(numStories int) ([]item, error) {
 		err  error
 	}
 	resultCh := make(chan result)
-	for i := 0; i < numStories; i++ {
+	want := numStories + 3
+	for i := 0; i < want; i++ {
 
 		go func(idx, id int) {
 			hnItem, err := client.GetItem(id)
@@ -73,7 +92,7 @@ func getTopStories(numStories int) ([]item, error) {
 	}
 
 	var results []result
-	for i := 0; i < numStories; i++ {
+	for i := 0; i < want; i++ {
 		results = append(results, <-resultCh)
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -87,6 +106,9 @@ func getTopStories(numStories int) ([]item, error) {
 		}
 		if isStoryLink(res.item) {
 			stories = append(stories, res.item)
+			if len(stories) == 30 {
+				break
+			}
 		}
 	}
 	return stories, nil
